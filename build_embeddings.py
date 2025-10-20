@@ -1,7 +1,8 @@
-from langchain.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 import pandas as pd
 from chromadb import Client
 from chromadb.config import Settings
+import sys
 
 # Load preprocessed data
 df = pd.read_csv("legal_data_cleaned.csv")

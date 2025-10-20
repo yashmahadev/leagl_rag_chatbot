@@ -17,12 +17,12 @@ for act_name, path in datasets.items():
 
     for item in data:
         # Ensure each dataset has these keys
-        section_no = item.get("section", item.get("section_no", "Unknown"))
-        title = item.get("title", "")
-        content = item.get("description", item.get("content", ""))
+        section_no = item.get("section", "")
+        title = item.get("section_title", "")
+        content = item.get("section_desc", "")
 
         processed_data.append({
-            "act": act_name,
+            "act": act_name.lower(),
             "chapter": item.get("chapter", "Unknown"),
             "section_no": section_no,
             "title": title,
