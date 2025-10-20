@@ -42,3 +42,5 @@ htmlcov/
 .coverage.*
 nosetests.xml
 coverage.xml
+
+chroma_legal_db

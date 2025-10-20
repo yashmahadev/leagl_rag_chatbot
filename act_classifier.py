@@ -1,53 +1,65 @@
-from langchain.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 import numpy as np
 
-# Rule-based keywords
-act_keywords = {
-    "IPC": ["murder","theft","defamation","rape","punishment","offence","crime"],
-    "CrPC": ["bail","arrest","trial","investigation","charge sheet","summon","magistrate"],
-    "NIA": ["terrorism","national investigation agency","nia","scheduled offences","uapa"]
+# Define the available Acts
+ACTS = {
+    "Indian Penal Code": ["murder", "theft", "punishment", "offence", "assault", "kidnapping", "cheating", "criminal"],
+    "Criminal Procedure Code": ["procedure", "arrest", "trial", "bail", "court", "appeal", "investigation", "warrant"],
+    "National Investigation Agency Act": ["terrorism", "nia", "agency", "investigate", "uapa", "national security"]
 }
 
-# Summaries for embedding classifier
-act_summaries = {
-    "IPC": "Defines offences and their punishments like murder, theft, rape, etc.",
-    "CrPC": "Defines criminal procedures like investigation, arrest, and bail.",
-    "NIA": "Defines powers of the National Investigation Agency to investigate terrorism offences."
-}
-
-# Initialize embedding model
+# Initialize embeddings model
 embedding_model = HuggingFaceEmbeddings(model_name="BAAI/bge-large-en-v1.5")
-act_vecs = {act: embedding_model.embed_query(text) for act, text in act_summaries.items()}
 
-# Rule-based scoring
-def rule_score(query):
-    q = query.lower()
-    return {act: sum(k in q for k in kws) for act, kws in act_keywords.items()}
+# Precompute embeddings for each Act's keywords
+ACT_EMBEDDINGS = {}
+for act_name, keywords in ACTS.items():
+    ACT_EMBEDDINGS[act_name] = [
+        embedding_model.embed_query(kw) for kw in keywords
+    ]
 
-# Embedding-based scoring
-def embed_score(query):
-    q_vec = embedding_model.embed_query(query)
-    return {act: np.dot(q_vec, vec) for act, vec in act_vecs.items()}
+def cosine_similarity(vec1, vec2):
+    """Compute cosine similarity between two vectors"""
+    v1, v2 = np.array(vec1), np.array(vec2)
+    return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
 
-# Hybrid classifier
-def classify_act(query, alpha=0.4):
-    rule = rule_score(query)
-    embed = embed_score(query)
+def classify_act(query: str):
+    """
+    Predict which Act the query belongs to based on embedding similarity and rule-based hints
+    Returns: (act_name, confidence)
+    """
+    query_embedding = embedding_model.embed_query(query.lower())
 
-    # Normalize
-    def norm(d):
-        vals = np.array(list(d.values()), dtype=float)
-        if vals.sum() == 0: vals += 1e-9
-        return {k: v / vals.sum() for k, v in d.items()}
+    scores = {}
 
-    rule_n = norm(rule)
-    embed_n = norm(embed)
-    combined = {act: alpha*rule_n.get(act,0) + (1-alpha)*embed_n.get(act,0) for act in set(rule_n)|set(embed_n)}
-    best = max(combined, key=combined.get)
-    confidence = combined[best]
-    return best, confidence
+    # Hybrid approach: rule-based + semantic
+    for act_name, kw_embeddings in ACT_EMBEDDINGS.items():
+        # Semantic score
+        sem_score = max([cosine_similarity(query_embedding, emb) for emb in kw_embeddings])
+        # Rule-based keyword boost
+        rule_boost = sum([1 for kw in ACTS[act_name] if kw in query.lower()]) * 0.05
+        scores[act_name] = sem_score + rule_boost
 
-# Example
-query = "punishment of murder"
-act, conf = classify_act(query)
-print(f"Predicted Act: {act}, Confidence: {conf:.2f}")
+    # Pick the highest-scoring act
+    best_act = max(scores, key=scores.get)
+    confidence = scores[best_act]
+
+    # Normalize confidence between 0–1
+    confidence = min(1.0, round(confidence, 2))
+
+    return best_act, confidence
+
+if __name__ == "__main__":
+    # Test queries
+    test_queries = [
+        "punishment for murder",
+        "procedure for arrest",
+        "terrorism investigation process",
+        "criminal appeal procedure",
+        "bail process in india"
+    ]
+
+    for q in test_queries:
+        act, conf = classify_act(q)
+        print(f"Query: {q}")
+        print(f"→ Predicted Act: {act} (Confidence: {conf})\n")
