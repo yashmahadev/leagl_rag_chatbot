@@ -1,46 +1,150 @@
 # Byte-compiled / optimized / compiled files
 __pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
 *.pyc
 *.pyd
 *.pyo
-*.egg-info/
-.pytest_cache/
 
-# Virtual environment
+# Virtual environments
 venv/
 .venv/
 env/
 .env/
+myenv/
+venv*/
+env*/
+ENV/
+env.bak/
+venv.bak/
 
-# Editor-specific files
+# IDE and Editor files
 .vscode/
 .idea/
 *.swp
-*.bak
-
-# Operating System files
+*.swo
+*~
 .DS_Store
 Thumbs.db
+*.bak
+*.tmp
 
-# Logs and databases
-*.log
-*.sqlite3
-*.db
+# Python testing and coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+nosetests.xml
 
-# Environment variables
+# Jupyter Notebook
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+
+# IPython
+profile_default/
+ipython_config.py
+
+# Environment variables and secrets
 .env
 .env.*
 secrets.json
+config.json
+*.key
+*.pem
 
-# Build artifacts
-dist/
-build/
+# Logs
+*.log
+logs/
+log/
 
-# Testing and coverage reports
-htmlcov/
-.coverage
-.coverage.*
-nosetests.xml
-coverage.xml
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
 
-chroma_legal_db
+# Vector database (ChromaDB)
+chroma_legal_db/
+*.bin
+*.pickle
+*.index
+
+# Data files (large datasets)
+*.csv
+*.json
+data/
+datasets/
+raw_data/
+processed_data/
+
+# Model files and embeddings
+models/
+embeddings/
+*.pkl
+*.joblib
+*.h5
+*.hdf5
+*.model
+
+# Streamlit
+.streamlit/
+
+# FastAPI
+.pytest_cache/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Windows
+*.lnk
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Cache directories
+.cache/
+__pycache__/
+
+# Documentation build
+docs/_build/
+site/
+
+# Package files
+*.tar.gz
+*.zip
+*.rar
+*.7z
+
+# Node.js (if using any JS tools)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Docker
+.dockerignore
+Dockerfile
+docker-compose.yml
+.docker/
+
+# Git
+*.orig
