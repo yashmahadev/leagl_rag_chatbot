@@ -1,108 +1,120 @@
+# hybrid_retriever_optimized.py
 import os
+import numpy as np
 from rank_bm25 import BM25Okapi
 from sentence_transformers import CrossEncoder
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
+from concurrent.futures import ThreadPoolExecutor
 
-# ---------------------------
-#  CONFIGURATION
-# ---------------------------
+# =====================================================
+# CONFIGURATION
+# =====================================================
 CHROMA_PATH = "chroma_db"
 DOCS_PATH = "data/docs"
 
-# Initialize embedding model (strong semantic model)
+# =====================================================
+# MODEL INITIALIZATION (done once)
+# =====================================================
 embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
 
-# Initialize vector database (persistent ChromaDB)
+# Persistent vector store
 chroma_db = Chroma(persist_directory=CHROMA_PATH, embedding_function=embedding_model)
 
-# Initialize CrossEncoder reranker
-reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+# CrossEncoder for reranking (semantic precision)
+reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", max_length=512)
 
-# ---------------------------
-#  LOAD DOCUMENTS FOR BM25
-# ---------------------------
-def load_documents_for_bm25():
-    """Loads all documents from disk to use in BM25 lexical search."""
-    documents = []
-    file_paths = []
-
+# =====================================================
+# LOAD DOCUMENTS FOR BM25
+# =====================================================
+def load_bm25_corpus():
+    """Load and cache all text documents for BM25 search."""
+    documents, sources = [], []
     for root, _, files in os.walk(DOCS_PATH):
-        for file in files:
-            if file.endswith(".txt"):
-                path = os.path.join(root, file)
-                with open(path, "r", encoding="utf-8") as f:
-                    text = f.read().strip()
-                    if len(text) > 0:
-                        documents.append(text)
-                        file_paths.append(path)
+        for f in files:
+            if f.endswith(".txt"):
+                path = os.path.join(root, f)
+                try:
+                    with open(path, "r", encoding="utf-8") as doc:
+                        text = doc.read().strip()
+                        if text:
+                            documents.append(text)
+                            sources.append(path)
+                except Exception as e:
+                    print(f"⚠️ Error reading {path}: {e}")
+    return documents, sources
 
-    return documents, file_paths
+print("🔍 Initializing BM25 corpus...")
+corpus, corpus_paths = load_bm25_corpus()
+bm25 = BM25Okapi([d.split() for d in corpus]) if corpus else None
+print(f"✅ BM25 initialized with {len(corpus)} documents.")
 
-
-print("🔍 Loading BM25 corpus...")
-corpus, corpus_paths = load_documents_for_bm25()
-bm25 = BM25Okapi([doc.split() for doc in corpus]) if corpus else None
-print(f"✅ Loaded {len(corpus)} documents into BM25.")
-
-
-# ---------------------------
-#  SEARCH METHODS
-# ---------------------------
+# =====================================================
+# BM25 SEARCH
+# =====================================================
 def bm25_search(query, top_k=5):
-    """Performs lexical BM25 search."""
+    """Lexical BM25 retrieval."""
     if not bm25:
         return []
-
     scores = bm25.get_scores(query.split())
-    ranked_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:top_k]
+    ranked = np.argsort(scores)[::-1][:top_k]
+    return [{"text": corpus[i], "score": float(scores[i]), "source": corpus_paths[i]} for i in ranked]
 
-    results = [
-        {"text": corpus[i], "score": scores[i], "source": corpus_paths[i]}
-        for i in ranked_indices
-    ]
-    return results
-
-
+# =====================================================
+# VECTOR (CHROMA) SEARCH
+# =====================================================
 def chroma_search(query, top_k=5):
-    """Performs semantic vector search from ChromaDB."""
-    results = chroma_db.similarity_search_with_score(query, k=top_k)
-    formatted = [
-        {"text": doc.page_content, "score": float(score), "source": doc.metadata.get("source", "")}
-        for doc, score in results
-    ]
-    return formatted
+    """Semantic vector search using Chroma."""
+    try:
+        results = chroma_db.similarity_search_with_score(query, k=top_k)
+        return [
+            {"text": doc.page_content, "score": float(score), "source": doc.metadata.get("source", "")}
+            for doc, score in results
+        ]
+    except Exception as e:
+        print(f"⚠️ Chroma search failed: {e}")
+        return []
 
-
-# ---------------------------
-#  HYBRID RETRIEVAL + RERANK
-# ---------------------------
+# =====================================================
+# HYBRID RETRIEVAL
+# =====================================================
 def retrieve(query, top_k=5):
-    """Performs hybrid retrieval (BM25 + Vector + CrossEncoder reranking)."""
-    bm25_results = bm25_search(query, top_k=10)
-    vector_results = chroma_search(query, top_k=10)
-    combined = bm25_results + vector_results
+    """Hybrid retrieval combining BM25 + Vector search + Reranker."""
+    if not query.strip():
+        return []
 
+    # Parallelize lexical + vector search
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        bm25_future = executor.submit(bm25_search, query, 10)
+        vector_future = executor.submit(chroma_search, query, 10)
+        bm25_results, vector_results = bm25_future.result(), vector_future.result()
+
+    combined = bm25_results + vector_results
     if not combined:
         return []
 
-    # Deduplicate results
-    unique_docs = {r["text"]: r for r in combined}.values()
+    # Deduplicate
+    unique = {r["text"]: r for r in combined}.values()
 
-    # Rerank using semantic CrossEncoder
-    pairs = [(query, r["text"]) for r in unique_docs]
-    scores = reranker.predict(pairs)
+    # Normalize scores for fairness
+    bm25_scores = np.array([r["score"] for r in unique])
+    bm25_scores = (bm25_scores - bm25_scores.min()) / (bm25_scores.ptp() + 1e-8)
 
-    reranked = sorted(zip(unique_docs, scores), key=lambda x: x[1], reverse=True)
+    # Rerank with semantic model
+    pairs = [(query, r["text"]) for r in unique]
+    semantic_scores = reranker.predict(pairs)
+
+    # Combine lexical + semantic weighting
+    combined_scores = 0.3 * bm25_scores + 0.7 * semantic_scores
+    reranked = sorted(zip(unique, combined_scores), key=lambda x: x[1], reverse=True)
+
     top_docs = [doc for doc, _ in reranked[:top_k]]
-
-    print(f"📘 Retrieved {len(top_docs)} documents for query: '{query}'")
+    print(f"📘 Retrieved {len(top_docs)} top documents for: '{query}'")
     return top_docs
 
-
-# ---------------------------
-#  TEST RUN
-# ---------------------------
+# =====================================================
+# TEST RUN
+# =====================================================
 if __name__ == "__main__":
     queries = [
         "What is the punishment for murder under IPC?",
