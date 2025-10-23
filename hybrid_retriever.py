@@ -1,122 +1,118 @@
 import os
-import pandas as pd
-import numpy as np
-from tqdm import tqdm
-from langchain_huggingface import HuggingFaceEmbeddings
 from rank_bm25 import BM25Okapi
-import chromadb
-from act_classifier import classify_act
+from sentence_transformers import CrossEncoder
+from langchain_community.vectorstores import Chroma
+from langchain_community.embeddings import HuggingFaceEmbeddings
 
-# ========== STEP 1: Load all Act datasets ==========
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "jsons")  # folder containing ipc.json, crpc.json, nia.json
+# ---------------------------
+#  CONFIGURATION
+# ---------------------------
+CHROMA_PATH = "chroma_db"
+DOCS_PATH = "data/docs"
 
-def load_dataset(filename: str, act_name: str):
-    file_path = os.path.join(DATA_DIR, filename)
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f"❌ Missing file: {file_path}")
-    
-    df = pd.read_json(file_path)
-    df["act_name"] = act_name
-    # Combine chapter, section, title, and description into content_text
-    df["content_text"] = df.apply(
-        lambda r: f"{r.get('chapter', '')} {r.get('section', '')} {r.get('section_title', '')} {r.get('section_desc', '')}".strip(),
-        axis=1
-    )
-    df["content_text"] = df["content_text"].fillna("").astype(str)
-    
-    # Return useful columns
-    return df[["act_name", "chapter", "section", "section_title", "section_desc", "content_text"]]
+# Initialize embedding model (strong semantic model)
+embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
 
-# Load datasets
-ipc_df = load_dataset("ipc.json", "IPC")
-crpc_df = load_dataset("crpc.json", "CrPC")
-nia_df = load_dataset("nia.json", "NIA")
+# Initialize vector database (persistent ChromaDB)
+chroma_db = Chroma(persist_directory=CHROMA_PATH, embedding_function=embedding_model)
 
-df = pd.concat([ipc_df, crpc_df, nia_df], ignore_index=True)
-print(f"✅ Loaded {len(df)} total sections from IPC, CrPC, and NIA.\n")
+# Initialize CrossEncoder reranker
+reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
 
-# ========== STEP 2: Initialize Embedding Model ==========
-embedding_model = HuggingFaceEmbeddings(model_name="BAAI/bge-large-en-v1.5")
+# ---------------------------
+#  LOAD DOCUMENTS FOR BM25
+# ---------------------------
+def load_documents_for_bm25():
+    """Loads all documents from disk to use in BM25 lexical search."""
+    documents = []
+    file_paths = []
 
-# ========== STEP 3: Prepare ChromaDB Vector Store ==========
-CHROMA_PATH = os.path.join(BASE_DIR, "chroma_legal_db")
-client = chromadb.PersistentClient(path=CHROMA_PATH)
-collection_name = "legal_acts"
+    for root, _, files in os.walk(DOCS_PATH):
+        for file in files:
+            if file.endswith(".txt"):
+                path = os.path.join(root, file)
+                with open(path, "r", encoding="utf-8") as f:
+                    text = f.read().strip()
+                    if len(text) > 0:
+                        documents.append(text)
+                        file_paths.append(path)
 
-# Check if collection already exists
-existing_collections = [c.name for c in client.list_collections()]
-if collection_name in existing_collections:
-    print(f"✅ ChromaDB collection '{collection_name}' exists. Skipping embedding...")
-    collection = client.get_collection(name=collection_name)
-else:
-    collection = client.create_collection(name=collection_name)
+    return documents, file_paths
 
-    # Embedding and storing in Chroma
-    for i, row in tqdm(df.iterrows(), total=len(df), desc="Embedding sections"):
-        text = row["content_text"]
-        if not text.strip():
-            continue
-        emb = embedding_model.embed_query(text)
-        collection.add(
-            ids=[str(i)],
-            embeddings=[emb],
-            metadatas=[{
-                "act_name": row["act_name"],
-                "section": row["section"],
-                "title": row["section_title"]
-            }],
-            documents=[text]
-        )
-    print("✅ Embeddings stored in ChromaDB.\n")
 
-# ========== STEP 4: Prepare BM25 Retriever ==========
-bm25_corpus = [doc.split() for doc in df["content_text"].tolist()]
-bm25 = BM25Okapi(bm25_corpus)
-print("✅ BM25 retriever ready.\n")
+print("🔍 Loading BM25 corpus...")
+corpus, corpus_paths = load_documents_for_bm25()
+bm25 = BM25Okapi([doc.split() for doc in corpus]) if corpus else None
+print(f"✅ Loaded {len(corpus)} documents into BM25.")
 
-# ========== STEP 5: Hybrid Search Function ==========
-def hybrid_search(query, top_k=5):
-    # Step 1: Act Classification
-    act, conf = classify_act(query)
-    print(f"🎯 Predicted Act: {act} (confidence={conf:.2f})")
 
-    # Filter dataset for that act
-    act_df = df[df["act_name"].str.lower() == act.lower()].reset_index(drop=True)
-    if act_df.empty:
-        print("⚠️ No matching sections found for this Act.")
+# ---------------------------
+#  SEARCH METHODS
+# ---------------------------
+def bm25_search(query, top_k=5):
+    """Performs lexical BM25 search."""
+    if not bm25:
         return []
 
-    # Step 2: BM25 retrieval
-    bm25_docs = [d.split() for d in act_df["content_text"].tolist()]
-    bm25_local = BM25Okapi(bm25_docs)
-    bm25_scores = bm25_local.get_scores(query.split())
-    top_bm25_idx = np.argsort(bm25_scores)[-top_k:][::-1]
-    bm25_results = act_df.iloc[top_bm25_idx]
+    scores = bm25.get_scores(query.split())
+    ranked_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:top_k]
 
-    # Step 3: Chroma vector similarity
-    q_vec = embedding_model.embed_query(query)
-    chroma_results = collection.query(query_embeddings=[q_vec], n_results=top_k)
-    chroma_docs = chroma_results["documents"][0]
+    results = [
+        {"text": corpus[i], "score": scores[i], "source": corpus_paths[i]}
+        for i in ranked_indices
+    ]
+    return results
 
-    # Combine BM25 + Chroma results and remove duplicates
-    combined_texts = list(bm25_results["content_text"].values) + chroma_docs
-    combined_texts = list(dict.fromkeys(combined_texts))
 
-    return combined_texts[:top_k]
+def chroma_search(query, top_k=5):
+    """Performs semantic vector search from ChromaDB."""
+    results = chroma_db.similarity_search_with_score(query, k=top_k)
+    formatted = [
+        {"text": doc.page_content, "score": float(score), "source": doc.metadata.get("source", "")}
+        for doc, score in results
+    ]
+    return formatted
 
-# ========== STEP 6: Test Queries ==========
+
+# ---------------------------
+#  HYBRID RETRIEVAL + RERANK
+# ---------------------------
+def retrieve(query, top_k=5):
+    """Performs hybrid retrieval (BM25 + Vector + CrossEncoder reranking)."""
+    bm25_results = bm25_search(query, top_k=10)
+    vector_results = chroma_search(query, top_k=10)
+    combined = bm25_results + vector_results
+
+    if not combined:
+        return []
+
+    # Deduplicate results
+    unique_docs = {r["text"]: r for r in combined}.values()
+
+    # Rerank using semantic CrossEncoder
+    pairs = [(query, r["text"]) for r in unique_docs]
+    scores = reranker.predict(pairs)
+
+    reranked = sorted(zip(unique_docs, scores), key=lambda x: x[1], reverse=True)
+    top_docs = [doc for doc, _ in reranked[:top_k]]
+
+    print(f"📘 Retrieved {len(top_docs)} documents for query: '{query}'")
+    return top_docs
+
+
+# ---------------------------
+#  TEST RUN
+# ---------------------------
 if __name__ == "__main__":
     queries = [
-        "punishment for murder",
-        "procedure for arrest",
-        "terrorism investigation powers",
-        "criminal appeal process",
-        "theft and its punishment"
+        "What is the punishment for murder under IPC?",
+        "Explain Section 420 IPC.",
+        "What is the procedure for arrest under CrPC?",
+        "Explain powers of NIA under NIA Act."
     ]
 
     for q in queries:
-        print(f"\n🔍 Query: {q}")
-        results = hybrid_search(q)
-        for i, res in enumerate(results, 1):
-            print(f"{i}. {res[:250]}...\n")
+        print(f"\n🔎 Query: {q}")
+        docs = retrieve(q)
+        for i, d in enumerate(docs, start=1):
+            print(f"\nResult {i}: {d['text'][:400]}...\nSource: {d['source']}")

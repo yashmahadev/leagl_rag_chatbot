@@ -2,7 +2,7 @@
 import streamlit as st
 import os
 import time
-from hybrid_retriever_fixed import retrieve
+from hybrid_retriever import retrieve
 import ollama
 
 # ------------------------------------------------
@@ -123,24 +123,66 @@ def generate_stream_response(query, context, show_citations=True):
         if show_citations else
         "Avoid legal citations, summarize in plain English."
     )
+#     prompt = f"""
+# You are a senior Indian legal expert assistant.
+# You must answer precisely using the context below when relevant.
+
+# Context:
+# {context}
+
+# Question:
+# {query}
+
+# Guidelines:
+# - {citation_instruction}
+# - Ensure accuracy >99%. Use context for legal facts.
+# - If unrelated, respond as a knowledgeable AI assistant conversationally.
+#     """
+
+    """High-accuracy reasoning answer generator."""
+    citation_instruction = (
+        "Include exact section numbers, act names, and cite them clearly."
+        if show_citations else
+        "Explain without mentioning act or section numbers."
+    )
+
+    system_prompt = f"""
+    You are a Supreme-Court-level Indian Legal Assistant.
+    Your job is to answer user queries precisely and accurately using only the given context.
+    Always cite relevant sections and acts (IPC, CrPC, or NIA).
+    If context is insufficient, clearly say so and provide general guidance.
+    """
+
     prompt = f"""
-You are a senior Indian legal expert assistant.
-You must answer precisely using the context below when relevant.
+    You are an expert Indian Legal Assistant.
+    Answer with extremely high accuracy (99%+), using the provided legal context.
+    If the context lacks sufficient data, respond conversationally but make it clear it’s a general answer.
 
-Context:
-{context}
+    Context:
+    {context}
 
-Question:
-{query}
+    User Question:
+    {query}
 
-Guidelines:
-- {citation_instruction}
-- Ensure accuracy >99%. Use context for legal facts.
-- If unrelated, respond as a knowledgeable AI assistant conversationally.
+    Guidelines:
+    - {citation_instruction}
+    - Keep answers logically structured, human-like, and confident.
+    - Use numbered lists or bullet points for clarity when needed.
+    - Provide concise and accurate legal explanations.
+    - Never hallucinate sections or laws not present in context.
+    - Provide structured response like:
+    ⚖️ Act & Section:
+    📘 Legal Explanation:
+    🧩 Practical Example:
+
     """
 
     response_text = ""
-    stream = ollama.chat(model="llama3.1", messages=[{"role": "user", "content": prompt}], stream=True)
+    # stream = ollama.chat(model="llama3.1", messages=[{"role": "user", "content": prompt}], stream=True)
+    stream = ollama.chat(model="llama3.1", messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ], stream=True)
     message_placeholder = st.empty()
 
     for chunk in stream:
@@ -149,6 +191,12 @@ Guidelines:
             response_text += content
             message_placeholder.markdown(f'<div class="chat-bubble bot-msg">{response_text}</div>', unsafe_allow_html=True)
             time.sleep(0.03)
+
+    # Remove typing cursor at the end
+    message_placeholder.markdown(
+        f'<div class="chat-bubble bot-msg">{response_text}</div>', 
+        unsafe_allow_html=True
+    )
 
     return response_text.strip()
 

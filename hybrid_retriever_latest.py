@@ -1,4 +1,4 @@
-# hybrid_retriever_fixed.py
+# hybrid_retriever.py
 import os
 import re
 import numpy as np
