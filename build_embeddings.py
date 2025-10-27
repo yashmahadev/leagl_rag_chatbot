@@ -1,33 +1,110 @@
-from langchain_huggingface import HuggingFaceEmbeddings
+"""
+build_embeddings.py
+-------------------
+Builds and stores semantic embeddings for all legal acts (IPC, CrPC, NIA)
+using ChromaDB + HuggingFace embeddings for fast hybrid retrieval.
+
+Run once before using the chatbot:
+    python build_embeddings.py
+"""
+
+import os
 import pandas as pd
-import chromadb
 from tqdm import tqdm
+from langchain_huggingface import HuggingFaceEmbeddings
+import chromadb
 
-# Load preprocessed data
-df = pd.read_csv("legal_data_cleaned.csv")
+# ------------------------------------------------
+# CONFIG
+# ------------------------------------------------
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "jsons")
+CHROMA_PATH = os.path.join(BASE_DIR, "chroma_legal_db")
+COLLECTION_NAME = "legal_acts"
 
-# Initialize embeddings model (modern import)
-embedding_model = HuggingFaceEmbeddings(model_name="BAAI/bge-large-en-v1.5")
+ACT_FILES = [
+    ("ipc.json", "IPC"),
+    ("crpc.json", "CrPC"),
+    ("nia.json", "NIA"),
+]
 
-# Initialize ChromaDB (new API)
-client = chromadb.PersistentClient(path="./chroma_legal_db")
-collection = client.get_or_create_collection(name="legal_sections")
+# ------------------------------------------------
+# INITIALIZE MODELS & CLIENT
+# ------------------------------------------------
+embedding_model = HuggingFaceEmbeddings(
+    model_name="BAAI/bge-large-en-v1.5",
+    model_kwargs={"device": "cpu"},
+    encode_kwargs={"normalize_embeddings": True}
+)
 
-# Insert documents into Chroma
-for idx, row in tqdm(df.iterrows(), total=len(df), desc="Embedding sections"):
-    content_text = f"[{row['act']}] {row['title']}: {row['content']}"
-    embedding = embedding_model.embed_query(content_text)
+client = chromadb.PersistentClient(path=CHROMA_PATH)
 
-    collection.add(
-        ids=[f"{row['act']}_{row['section_no']}"],
-        metadatas=[{
-            "act": row["act"],
-            "chapter": row["chapter"],
-            "section_no": row["section_no"],
-            "title": row["title"]
-        }],
-        documents=[content_text],
-        embeddings=[embedding]
-    )
+# Drop existing collection if exists (safe reset)
+if any(c.name == COLLECTION_NAME for c in client.list_collections()):
+    client.delete_collection(COLLECTION_NAME)
 
-print("✅ Embeddings created and stored in ChromaDB successfully!")
+collection = client.create_collection(name=COLLECTION_NAME)
+
+# ------------------------------------------------
+# DATA LOADER
+# ------------------------------------------------
+def load_dataset(filename: str, act_name: str) -> pd.DataFrame:
+    """Load a single act JSON and prepare text for embedding."""
+    path = os.path.join(DATA_DIR, filename)
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Missing dataset file: {filename}")
+
+    df = pd.read_json(path, dtype={"section": str})
+    df["act_name"] = act_name
+    df["content_text"] = (
+        "Act: " + act_name + ". Section " +
+        df["section"].astype(str) + ": " +
+        df["section_title"].astype(str) + ". " +
+        df["section_desc"].astype(str)
+    ).str.strip()
+    return df[["act_name", "section", "section_title", "section_desc", "content_text"]]
+
+# ------------------------------------------------
+# MAIN BUILD LOGIC
+# ------------------------------------------------
+def build_embeddings():
+    all_dfs = []
+    for file_name, act_name in ACT_FILES:
+        try:
+            all_dfs.append(load_dataset(file_name, act_name))
+        except FileNotFoundError as e:
+            print(f"⚠️ Skipping missing file: {file_name}")
+            continue
+
+    if not all_dfs:
+        raise RuntimeError("❌ No valid legal act JSON files found in ./jsons directory.")
+
+    df = pd.concat(all_dfs, ignore_index=True)
+    print(f"✅ Loaded {len(df)} total sections across acts.")
+
+    # Embed & store
+    for i, row in tqdm(df.iterrows(), total=len(df), desc="Embedding legal sections"):
+        text = row["content_text"]
+        if not text.strip():
+            continue
+
+        emb = embedding_model.embed_documents([text])[0]
+        collection.add(
+            ids=[str(i)],
+            embeddings=[emb],
+            metadatas=[{
+                "act_name": row["act_name"],
+                "section": row["section"],
+                "title": row["section_title"]
+            }],
+            documents=[text]
+        )
+
+    print("✅ All embeddings stored successfully in ChromaDB.")
+    print(f"📂 Path: {CHROMA_PATH}")
+
+# ------------------------------------------------
+# ENTRY POINT
+# ------------------------------------------------
+if __name__ == "__main__":
+    build_embeddings()

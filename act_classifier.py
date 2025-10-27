@@ -48,15 +48,15 @@ def classify_act(query, alpha=0.4):
     return best, confidence
 
 # Example
-test_queries = [
-    "punishment for murder",
-    "procedure for arrest",
-    "terrorism investigation process",
-    "criminal appeal procedure",
-    "bail process in india"
-]
+# test_queries = [
+#     "punishment for murder",
+#     "procedure for arrest",
+#     "terrorism investigation process",
+#     "criminal appeal procedure",
+#     "bail process in india"
+# ]
 
-for q in test_queries:
-    act, conf = classify_act(q)
-    print(f"Query: {q}")
-    print(f"→ Predicted Act: {act} (Confidence: {conf})\n")
+# for q in test_queries:
+#     act, conf = classify_act(q)
+#     print(f"Query: {q}")
+#     print(f"→ Predicted Act: {act} (Confidence: {conf})\n")

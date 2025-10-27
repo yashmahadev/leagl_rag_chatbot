@@ -53,7 +53,7 @@ A sophisticated **Retrieval-Augmented Generation (RAG)** system for querying Ind
    python preprocess_datasets.py
    
    # Build vector embeddings
-   python build_embeddings_fixed.py
+   python build_embeddings.py
    ```
 
 5. **Run the application**
@@ -66,8 +66,8 @@ A sophisticated **Retrieval-Augmented Generation (RAG)** system for querying Ind
 ```
 legal_rag_chatbot/
 ├── 📱 app_chatbot.py              # Main Streamlit application
-├── 🔍 hybrid_retriever_fixed.py   # Advanced hybrid retrieval system
-├── 🏗️ build_embeddings_fixed.py   # Vector database builder
+├── 🔍 hybrid_retriever.py   # Advanced hybrid retrieval system
+├── 🏗️ build_embeddings.py   # Vector database builder
 ├── 🧠 act_classifier.py           # Legal act classification
 ├── 📊 preprocess_datasets.py      # Data preprocessing
 ├── 🧪 test_retrieval.py           # Retrieval testing
@@ -82,7 +82,7 @@ legal_rag_chatbot/
 
 ## 🛠️ Core Components
 
-### 1. **Hybrid Retrieval System** (`hybrid_retriever_fixed.py`)
+### 1. **Hybrid Retrieval System** (`hybrid_retriever.py`)
 - **Semantic Search**: ChromaDB with BGE embeddings for meaning-based retrieval
 - **Keyword Search**: BM25 algorithm for exact term matching
 - **Cross-Encoder Reranking**: Advanced reranking for optimal results
@@ -121,7 +121,7 @@ legal_rag_chatbot/
 ### API Usage
 
 ```python
-from hybrid_retriever_fixed import retrieve
+from hybrid_retriever import retrieve
 
 # Simple retrieval
 results = retrieve("What is the punishment for theft?", top_k=3)
@@ -188,12 +188,12 @@ python rag_llm.py
    - Standardizes format across acts
    - Creates unified dataset
 
-2. **Embedding Generation** (`build_embeddings_fixed.py`)
+2. **Embedding Generation** (`build_embeddings.py`)
    - Generates vector embeddings
    - Stores in ChromaDB
    - Creates searchable index
 
-3. **Retrieval System** (`hybrid_retriever_fixed.py`)
+3. **Retrieval System** (`hybrid_retriever.py`)
    - Combines multiple retrieval strategies
    - Reranks results for accuracy
    - Returns top-k relevant documents
