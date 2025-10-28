@@ -3,9 +3,30 @@ import numpy as np
 
 # Rule-based keywords
 act_keywords = {
-    "IPC": ["murder","theft","defamation","rape","punishment","offence","crime"],
-    "CrPC": ["bail","arrest","trial","investigation","charge sheet","summon","magistrate"],
-    "NIA": ["terrorism","national investigation agency","nia","scheduled offences","uapa"]
+    "IPC": [        
+        "murder", "homicide", "culpable homicide", "rape", "sexual assault", "assault",
+        "attempt to murder", "kidnapping", "abduction",        
+        "theft", "robbery", "dacoity", "extortion", "cheating", "criminal breach of trust",
+        "misappropriation", "forgery", "receiving stolen property",        # offences against 
+        "sedition", "terrorism", "unlawful assembly", "rioting", "public mischief",        
+        "defamation", "insult", "criminal intimidation", "annoyance",        # special 
+        "bribery", "counterfeiting", "poisoning", "dangerous weapons", "abetment", "conspiracy",
+        "non-cognizable", "cognizable", "bailable", "non-bailable", "compoundable"
+    ],
+    "CrPC": [
+        "arrest", "detention", "remand", "police custody", "judicial custody",
+        "charge sheet", "FIR", "investigation", "summons", "warrant", "magistrate",
+        "trial", "session court", "appeal", "revision", "bail", "anticipatory bail",
+        "interim bail", "release on bail", "cognizable offence", "non-cognizable offence",
+        "bailable offence", "non-bailable offence", "compoundable offence", "non-compoundable offence",
+        "examination of witness", "cross-examination", "plea bargaining", "acquittal", "conviction"
+    ],
+    "NIA": [
+        "terrorism", "scheduled offences", "national investigation agency", "NIA",
+        "terrorist act", "terrorist organisation", "terror funding", "UAPA", "investigation of terrorism",
+        "firearms act", "arms trafficking", "bomb attack", "insurgency", "counter-terror operations",
+        "inter-state terrorism", "transnational terrorism", "cyber terrorism", "major offence", "national security"
+    ]
 }
 
 # Summaries for embedding classifier
