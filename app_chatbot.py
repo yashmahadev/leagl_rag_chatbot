@@ -196,7 +196,9 @@ def generate_stream_response(query, context, show_citations=True):
     **Detailed Explanation:** [Plain, clear, accurate legal explanation referencing context]  
     **Practical Implications:** [How this applies in real scenarios]  
     **Related Provisions:** [Any connected sections or acts]  
-    [One short clarifying question or leave it]  
+
+    
+    [One short clarifying question]  
     """
 
     response_text = ""
