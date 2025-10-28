@@ -149,4 +149,4 @@ docker-compose.yml
 
 # Git
 *.orig
-*.csv
+.csv
