@@ -83,6 +83,7 @@ chroma_legal_db/
 *.csv
 *.json
 data/
+jsons/
 datasets/
 raw_data/
 processed_data/
@@ -148,3 +149,4 @@ docker-compose.yml
 
 # Git
 *.orig
+*.csv
