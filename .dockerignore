@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+*.log
+venv/
+.env
+chroma_legal_db/
+*.jsonl
+*.csv
+.git
