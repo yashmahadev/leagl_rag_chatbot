@@ -152,7 +152,7 @@ def generate_stream_response(query, context, show_citations=True):
 
     # System message sets role & high-level constraints
     system_message = (
-        "You are an expert Indian legal assistant (Supreme-Court-level) named 'LexLegal AI'. "
+        "You are an expert Indian legal assistant (Supreme-Court-level) named 'Lex Legal AI'. "
         "Your primary goal is to provide highly accurate, context-based answers to Indian legal questions "
         "using only the provided LEGAL CONTEXT. "
         "However, if the user greets you or asks a general, personal, or unrelated question "
@@ -176,7 +176,7 @@ def generate_stream_response(query, context, show_citations=True):
     ### RESPONSE RULES:
     1. If the user's query is **general, personal, or unrelated to law** (e.g., greetings, small talk, AI-related questions, etc.):
     → Respond casually and conversationally in a single paragraph.  
-    → Example: “Hey there! I’m LexLegal AI, your virtual Indian legal assistant. How can I help you today?”
+    → Example: “Hey there! I’m Lex Legal AI, your virtual Indian legal assistant. How can I help you today?”
     → Do **not** include any legal or structured response format.
 
     2. If the user's query is **legal** or **related to Indian law**:
